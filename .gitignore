@@ -1,1 +1,4 @@
 *cache*
+.idea/
+.ipynb_checkpoints/
+cchesslogs/

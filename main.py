@@ -492,12 +492,17 @@ class MCTS_tree(object):
             self.expanded.add(node)    # node.state
 
         coroutine_list = []
-        for _ in range(playouts):
-            start = timeit.default_timer()
-            self.tree_search(node, current_player, restrict_round)
-            stop = timeit.default_timer()
-            # print('Time: ', stop - start)
+        start = timeit.default_timer()
+        # self.tree_search(node, current_player, restrict_round)
 
+        for c in node.child:
+            for n in range(playouts):
+                self.tree_search(node.child[c], current_player, restrict_round)
+
+        self.tree_search(node, current_player, restrict_round)
+
+        stop = timeit.default_timer()
+        print('Time: ', stop - start)
             # coroutine_list.append(self.tree_search(node, current_player, restrict_round))
         # coroutine_list.append(self.prediction_worker())
         # self.loop.run_until_complete(asyncio.gather(*coroutine_list))

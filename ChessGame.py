@@ -155,8 +155,17 @@ class ChessGame:
         if self.current_player == "w":
             self.cur_round += 1
             print ('-----Round %d-----' % self.cur_round)
-        red_msg = " ({:.4f})".format(self.win_rate['w'])
-        green_msg = " ({:.4f})".format(self.win_rate['b'])
+
+        if type(self.win_rate['w']).__module__ == np.__name__:
+            red_msg = " ({:.4f})".format(self.win_rate['w'][0])
+        else:
+            red_msg = " ({:.4f})".format(self.win_rate['w'])
+
+        if type(self.win_rate['b']).__module__ == np.__name__:
+            green_msg = " ({:.4f})".format(self.win_rate['b'][0])
+        else:
+            green_msg = " ({:.4f})".format(self.win_rate['b'])
+
         sorted_move_probs = self.cchess_engine.get_hint(self.ai_function, True, self.disp_mcts_msg)
         # print(sorted_move_probs)
         self.view.print_all_hint(sorted_move_probs)
