@@ -17,7 +17,7 @@ import time
 import argparse
 from collections import deque, defaultdict, namedtuple
 import copy
-from policy_value_network import *
+# from policy_value_network import *
 from policy_value_network_gpus import *
 import scipy.stats
 from threading import Lock
@@ -1217,7 +1217,7 @@ class cchess_main(object):
         self.data_buffer = deque(maxlen=self.buffer_size)
         self.game_borad = GameBoard()
         # self.current_player = 'w'    #“w”表示红方，“b”表示黑方。
-        self.policy_value_netowrk = policy_value_network(res_block_nums) if processor == 'cpu' else policy_value_network_gpus(num_gpus, res_block_nums)
+        self.policy_value_netowrk = policy_value_network_gpus(res_block_nums) if processor == 'cpu' else policy_value_network_gpus(num_gpus, res_block_nums)
         self.search_threads = in_search_threads
         self.mcts = MCTS_tree(self.game_borad.state, self.policy_value_netowrk.forward, self.search_threads)
         self.exploration = exploration
