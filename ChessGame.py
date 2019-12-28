@@ -191,10 +191,11 @@ class ChessGame:
 
     def perform_AI(self):
         print ('...AI is calculating...')
-        START_TIME = time.clock()
+        START_TIME = timeit.default_timer()
         move, win_rate = self.cchess_engine.select_move(self.ai_function)
-        time_used = time.clock() - START_TIME
-        print ('...Use %fs...' % time_used)
+
+        time_used = timeit.default_timer() - START_TIME
+        # print('Use time: ', stop - start)
         if self.current_player == "w":
             self.time_red.append(time_used)
         else:
