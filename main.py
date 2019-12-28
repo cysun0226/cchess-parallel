@@ -4,6 +4,9 @@ import asyncio
 from asyncio.queues import Queue
 import uvloop
 asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+import timeit
+
+
 
 import tensorflow as tf
 import numpy as np
@@ -334,25 +337,26 @@ class MCTS_tree(object):
         """Check expanded status"""
         return key in self.expanded
 
-    async def tree_search(self, node, current_player, restrict_round) -> float:
+    def tree_search(self, node, current_player, restrict_round) -> float:
         """Independent MCTS, stands for one simulation"""
         self.running_simulation_num += 1
+        value = self.start_tree_search(node, current_player, restrict_round)
 
         # reduce parallel search number
-        with await self.sem:
-            value = await self.start_tree_search(node, current_player, restrict_round)
+        # with await self.sem:
+        #     value = await self.start_tree_search(node, current_player, restrict_round)
             # logger.debug(f"value: {value}")
             # logger.debug(f'Current running threads : {RUNNING_SIMULATION_NUM}')
-            self.running_simulation_num -= 1
+            # self.running_simulation_num -= 1
 
-            return value
+        return value
 
-    async def start_tree_search(self, node, current_player, restrict_round)->float:
+    def start_tree_search(self, node, current_player, restrict_round)->float:
         """Monte Carlo Tree search Select,Expand,Evauate,Backup"""
         now_expanding = self.now_expanding
 
-        while node in now_expanding:
-            await asyncio.sleep(1e-4)
+        # while node in now_expanding:
+        #     await asyncio.sleep(1e-4)
 
         if not self.is_expanded(node):    # and node.is_leaf()
             """is leaf node try evaluate and expand"""
@@ -360,12 +364,13 @@ class MCTS_tree(object):
             self.now_expanding.add(node)
 
             positions = self.generate_inputs(node.state, current_player)
-            # positions = np.expand_dims(positions, 0)
+            features = np.expand_dims(positions, 0)
 
             # push extracted dihedral features of leaf node to the evaluation queue
-            future = await self.push_queue(positions)  # type: Future
-            await future
-            action_probs, value = future.result()
+            # features = np.asarray(positions)  # asarray
+            # action_probs, value = future.result()
+            action_probs, value = self.forward(features)
+
 
             # action_probs, value = self.forward(positions)
             if self.is_black_turn(current_player):
@@ -415,7 +420,7 @@ class MCTS_tree(object):
             elif restrict_round >= 60:
                 value = 0.0
             else:
-                value = await self.start_tree_search(node, current_player, restrict_round)  # next move
+                value = self.start_tree_search(node, current_player, restrict_round)  # next move
             # if node is not None:
             #     value = await self.start_tree_search(node)  # next move
             # else:
@@ -463,10 +468,10 @@ class MCTS_tree(object):
             for p, v, item in zip(action_probs, value, item_list):
                 item.future.set_result((p, v))
 
-    async def push_queue(self, features):
+    def push_queue(self, features):
         future = self.loop.create_future()
         item = QueueItem(features, future)
-        await self.queue.put(item)
+        self.queue.put(item)
         return future
 
     #@profile
@@ -488,9 +493,14 @@ class MCTS_tree(object):
 
         coroutine_list = []
         for _ in range(playouts):
-            coroutine_list.append(self.tree_search(node, current_player, restrict_round))
-        coroutine_list.append(self.prediction_worker())
-        self.loop.run_until_complete(asyncio.gather(*coroutine_list))
+            start = timeit.default_timer()
+            self.tree_search(node, current_player, restrict_round)
+            stop = timeit.default_timer()
+            # print('Time: ', stop - start)
+
+            # coroutine_list.append(self.tree_search(node, current_player, restrict_round))
+        # coroutine_list.append(self.prediction_worker())
+        # self.loop.run_until_complete(asyncio.gather(*coroutine_list))
 
     def do_simulation(self, state, current_player, restrict_round):
         node = self.root
@@ -1461,7 +1471,10 @@ class cchess_main(object):
             action = max(act_prob_dict.items(), key=lambda node: node[1])[0]
             # self.mcts.update_tree(action)
 
-        print('Win rate for player {} is {:.4f}'.format(self.game_borad.current_player, win_rate))
+        if type(win_rate).__module__ == np.__name__:
+            print('Win rate for player {} is {:.4f}'.format(self.game_borad.current_player, win_rate[0]))
+        else:
+            print('Win rate for player {} is {:.4f}'.format(self.game_borad.current_player, win_rate))
         last_state = self.game_borad.state
         print(self.game_borad.current_player, " now take a action : ", action, "[Step {}]".format(self.game_borad.round))    # if self.human_color == 'w' else "".join(flipped_uci_labels(action))
         self.game_borad.state = GameBoard.sim_do_action(action, self.game_borad.state)
