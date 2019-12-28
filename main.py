@@ -554,6 +554,7 @@ class MCTS_tree(object):
         next_player = "w" if current_player == "b" else "b"
 
         # for n in range(playouts):
+        #     self.tree_search(node, current_player, restrict_round)
 
         for c in node.child:
             for n in range(playouts):
@@ -1414,8 +1415,21 @@ class cchess_main(object):
 
         self.mcts.main(state, self.game_borad.current_player, self.game_borad.restrict_round, self.playout_counts)
 
-        actions_visits = [(act, nod.N) for act, nod in self.mcts.root.child.items()]
+        actions_visits = [(act, nod.P) for act, nod in self.mcts.root.child.items()]
+        P_list = [x[1] for x in actions_visits]
+        P_list = [(float(i)-min(P_list))/float(max(P_list)-min(P_list)) for i in P_list]
+        norm_actions_visits = []
+        for i in range(len(actions_visits)):
+            norm_actions_visits.append((actions_visits[i][0], P_list[i]))
+
+        actions_visits = norm_actions_visits
+
         actions, visits = zip(*actions_visits)
+        child_list = [(act, nod) for act, nod in self.mcts.root.child.items()]
+        for x in child_list:
+            # print(x)
+            print("act [%s] N: %f, P: %f, Q: %f, v: %f, U: %f, W: %f" %
+                  (x[0], x[1].N, x[1].P, x[1].Q, x[1].v, x[1].U, x[1].W))
         probs = softmax(1.0 / temperature * np.log(visits))    #+ 1e-10
         move_probs = []
         move_probs.append([actions, probs])
