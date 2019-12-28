@@ -350,7 +350,6 @@ class MCTS_tree(object):
             # self.running_simulation_num -= 1
 
         return value
-
     def start_tree_search(self, node, current_player, restrict_round)->float:
         """Monte Carlo Tree search Select,Expand,Evauate,Backup"""
         now_expanding = self.now_expanding
@@ -444,6 +443,62 @@ class MCTS_tree(object):
             #     # illegal move doesn't mean much for the opponent
             #     return 0
 
+    def start_child_search(self, node, act, child, current_player, restrict_round)->float:
+        last_state = node.state
+        action, node = act, child
+        current_player = "w" if current_player == "b" else "b"
+        if is_kill_move(last_state, node.state) == 0:
+            restrict_round += 1
+        else:
+            restrict_round = 0
+        last_state = node.state
+
+        node.N += virtual_loss
+        node.W += -virtual_loss
+
+        if (node.state.find('K') == -1 or node.state.find('k') == -1):
+            if (node.state.find('K') == -1):
+                value = 1.0 if current_player == "b" else -1.0
+            if (node.state.find('k') == -1):
+                value = -1.0 if current_player == "b" else 1.0
+            value = value * -1
+        elif restrict_round >= 60:
+            value = 0.0
+        else:
+            value = self.start_tree_search(node, current_player, restrict_round)  # next move
+
+        node.N += -virtual_loss
+        node.W += virtual_loss
+
+        node.back_up_value(value)
+        return value * -1
+
+
+    def update_root(self, node, current_player, restrict_round, act, child)->float:
+        last_state = node.state
+        action = act
+        node = child
+        current_player = "w" if current_player == "b" else "b"
+        if is_kill_move(last_state, node.state) == 0:
+            restrict_round += 1
+        else:
+            restrict_round = 0
+        last_state = node.state
+
+        value = self.start_tree_search(node, current_player, restrict_round)
+
+        node.N += -virtual_loss
+        node.W += virtual_loss
+
+        # on returning search path
+        # update: N, W, Q, U
+        # self.back_up_value(key, action_t, value)
+        node.back_up_value(value)  # -value
+
+        # must invert
+        return value * -1
+
+
     async def prediction_worker(self):
         """For better performance, queueing prediction requests and predict together in this worker.
         speed up about 45sec -> 15sec for example.
@@ -495,14 +550,22 @@ class MCTS_tree(object):
         start = timeit.default_timer()
         # self.tree_search(node, current_player, restrict_round)
 
+
+        next_player = "w" if current_player == "b" else "b"
+
+        # for n in range(playouts):
+
         for c in node.child:
             for n in range(playouts):
-                self.tree_search(node.child[c], current_player, restrict_round)
+                value = self.start_child_search(node, c, node.child[c], current_player, restrict_round)
+                node.child[c].back_up_value(value)
 
-        self.tree_search(node, current_player, restrict_round)
+        # collect child from each parallel process
+        # for act, child in parallel_program:
+        #   node.child[act] = child
 
         stop = timeit.default_timer()
-        print('Time: ', stop - start)
+        print('MCTS time: ', stop - start)
             # coroutine_list.append(self.tree_search(node, current_player, restrict_round))
         # coroutine_list.append(self.prediction_worker())
         # self.loop.run_until_complete(asyncio.gather(*coroutine_list))
