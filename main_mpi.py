@@ -546,37 +546,63 @@ class MCTS_tree(object):
             node.expand(moves, action_probs)
             self.expanded.add(node)    # node.state
 
-        start = timeit.default_timer()
 
-        # for n in range(playouts):
-        #     self.tree_search(node, current_player, restrict_round)
+
+        # make sure all the nodes complete updating
+        # comm.Barrier()
+        start = timeit.default_timer()
 
         process_num = 4
         child_list = []
         ori_child = node.child.copy()
-        partial = int(len(node.child) / process_num)
+        part = int(len(node.child) / process_num)
 
         # seperate children
         for i in range(process_num):
-            child_list.append(dict(list(node.child.items())[partial*i:partial*(i+1)]))
+            if i != process_num -1:
+                child_list.append(dict(list(node.child.items())[part*i:part*(i+1)]))
+            else:
+                child_list.append(dict(list(node.child.items())[part*i:len(node.child)]))
 
         # search by each process
+        # rank = comm.Get_rank()
+        # node.child = child_list[rank]
+
+        """
         for i in range(process_num):
             node.child = child_list[i]
             for n in range(playouts):
                 self.tree_search(node, current_player, restrict_round)
             child_list[i] = node.child
+        """
 
+
+        """
+        class leaf_node(object):
+            def __init__(self, in_parent, in_prior_p, in_state):
+                self.P = in_prior_p
+                self.Q = 0
+                self.N = 0
+                self.v = 0
+                self.U = 0
+                self.W = 0
+                self.parent = in_parent
+                self.child = {}
+                self.state = in_state
+        """
+
+        # if worker
+        # send array of node.N to master
+
+        # if master
         # collect child from each parallel process
         for i in range(process_num-1):
+            # collect N of children
             node.child.update(child_list[i])
-
 
         stop = timeit.default_timer()
         print('MCTS time: ', stop - start)
-            # coroutine_list.append(self.tree_search(node, current_player, restrict_round))
-        # coroutine_list.append(self.prediction_worker())
-        # self.loop.run_until_complete(asyncio.gather(*coroutine_list))
+
 
     def do_simulation(self, state, current_player, restrict_round):
         node = self.root
@@ -1413,22 +1439,9 @@ class cchess_main(object):
 
     #@profile
     def get_action(self, state, temperature = 1e-3):
-        # for i in range(self.playout_counts):
-        #     state_sim = copy.deepcopy(state)
-        #     self.mcts.do_simulation(state_sim, self.game_borad.current_player, self.game_borad.restrict_round)
 
         self.mcts.main(state, self.game_borad.current_player, self.game_borad.restrict_round, self.playout_counts)
-
         actions_visits = [(act, nod.N) for act, nod in self.mcts.root.child.items()]
-
-        # actions_visits = [(act, nod.P) for act, nod in self.mcts.root.child.items()]
-        # P_list = [x[1] for x in actions_visits]
-        # P_list = [(float(i)-min(P_list))/float(max(P_list)-min(P_list)) for i in P_list]
-        # norm_actions_visits = []
-        # for i in range(len(actions_visits)):
-        #     norm_actions_visits.append((actions_visits[i][0], P_list[i]))
-        #
-        # actions_visits = norm_actions_visits
 
         actions, visits = zip(*actions_visits)
 
@@ -1448,13 +1461,16 @@ class cchess_main(object):
         else:
             act = np.random.choice(actions, p=probs)
 
-        win_rate = self.mcts.Q(act) # / 2.0 + 0.5
-        self.mcts.update_tree(act)
+        # if master
+        # comm = MPI.COMM_WORLD
+        # rank = comm.Get_rank()
+        # broadcast act
+        # print("Node ", rank, " before boardcast, act = ", act)
+        # comm.Bcast(n, root=0)
+        # print("Node ", rank, " after boardcast, act = ", act)
 
-        # if position.n < 30:    # self.top_steps
-        #     move = select_weighted_random(position, on_board_move_prob)
-        # else:
-        #     move = select_most_likely(position, on_board_move_prob)
+        win_rate = self.mcts.Q(act)
+        self.mcts.update_tree(act)
 
         return act, move_probs, win_rate
 
