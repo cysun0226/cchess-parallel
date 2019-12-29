@@ -550,20 +550,37 @@ class MCTS_tree(object):
         start = timeit.default_timer()
         # self.tree_search(node, current_player, restrict_round)
 
-
-        next_player = "w" if current_player == "b" else "b"
-
         # for n in range(playouts):
         #     self.tree_search(node, current_player, restrict_round)
 
-        for c in node.child:
+        process_num = 4
+        child_list = []
+        ori_child = node.child.copy()
+        partial = len(node.child) / process_num
+
+        # seperate children
+        for i in range(process_num):
+            child_list.append(dict(node.child.items()[partial*i:partial*(i+1)]))
+
+        # search by each process
+        for i in range(process_num):
+            node.child = child_list[i]
             for n in range(playouts):
-                value = self.start_child_search(node, c, node.child[c], current_player, restrict_round)
-                node.child[c].back_up_value(value)
+                self.tree_search(node, current_player, restrict_round)
+            child_list[i] = node.child
 
         # collect child from each parallel process
+        for i in range(process_num-1):
+            node.child.update(child_list[i])
         # for act, child in parallel_program:
         #   node.child[act] = child
+
+        # for c in node.child:
+        #     for n in range(playouts):
+        #         value = self.start_child_search(node, c, node.child[c], current_player, restrict_round)
+        #         node.child[c].back_up_value(value)
+
+
 
         stop = timeit.default_timer()
         print('MCTS time: ', stop - start)
@@ -1312,9 +1329,6 @@ class cchess_main(object):
                 # states_data = []
                 for state, mcts_prob, winner in play_data:
                     states_data = self.mcts.state_to_positions(state)
-                    # prob = np.zeros(labels_len)
-                    # for idx in range(len(mcts_prob[0][0])):
-                    #     prob[label2i[mcts_prob[0][0][idx]]] = mcts_prob[0][1][idx]
                     extend_data.append((states_data, mcts_prob, winner))
                 self.data_buffer.extend(extend_data)
                 if len(self.data_buffer) > self.batch_size:
