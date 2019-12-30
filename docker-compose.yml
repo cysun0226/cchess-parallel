@@ -1,0 +1,48 @@
+version: "3"
+services:
+  master:
+    container_name: cysun-mpi-master
+    image: cysun/tf:v1
+    ports:
+      - "55688:5566"
+    networks:
+      - net
+    links:
+      - "worker_1:worker_1"
+      - "worker_2:worker_2"
+      - "worker_3:worker_3"
+    volumes:
+      - /home/cysun/docker:/project
+    tty: true
+  worker_1:
+    container_name: cysun-mpi-worker_1
+    image: cysun/tf:v1
+    ports:
+      - "55689:5566"
+    networks:
+      - net
+    volumes:
+      - /home/cysun/docker:/project
+    tty: true
+  worker_2:
+    container_name: cysun-mpi-worker_2
+    image: cysun/tf:v1
+    ports:
+      - "55690:5566"
+    networks:
+      - net
+    volumes:
+      - /home/cysun/docker:/project
+    tty: true
+  worker_3:
+    container_name: cysun-mpi-worker_3
+    image: cysun/tf:v1
+    ports:
+      - "55691:5566"
+    networks:
+      - net
+    volumes:
+      - /home/cysun/docker:/project
+    tty: true
+networks:
+  net:
