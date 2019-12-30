@@ -439,15 +439,15 @@ class MCTS_tree(object):
                 child_list.append(dict(list(node.child.items())[part * i:len(node.child)]))
 
         # search by each process
-        for i in range(process_num):
-            node.child = child_list[i]
-            for n in range(playouts):
-                self.tree_search(node, current_player, restrict_round)
-            child_list[i] = node.child
+        for p in range(4):  # for process (0, 1, 2, 3)
+            for c in child_list[p]:
+                for n in range(playouts):
+                    value = self.start_child_search(node, c, node.child[c], current_player, restrict_round)
+                    node.child[c].back_up_value(value)
 
         # collect child from each parallel process
-        for i in range(process_num-1):
-            node.child.update(child_list[i])
+        # send each node's node.P to the main process
+        # TODO ...
 
 
         stop = timeit.default_timer()
@@ -1293,22 +1293,18 @@ class cchess_main(object):
 
     #@profile
     def get_action(self, state, temperature = 1e-3):
-        # for i in range(self.playout_counts):
-        #     state_sim = copy.deepcopy(state)
-        #     self.mcts.do_simulation(state_sim, self.game_borad.current_player, self.game_borad.restrict_round)
 
         self.mcts.main(state, self.game_borad.current_player, self.game_borad.restrict_round, self.playout_counts)
 
-        actions_visits = [(act, nod.N) for act, nod in self.mcts.root.child.items()]
+        actions_visits = [(act, nod.P) for act, nod in self.mcts.root.child.items()]
 
-        # actions_visits = [(act, nod.P) for act, nod in self.mcts.root.child.items()]
-        # P_list = [x[1] for x in actions_visits]
-        # P_list = [(float(i)-min(P_list))/float(max(P_list)-min(P_list)) for i in P_list]
-        # norm_actions_visits = []
-        # for i in range(len(actions_visits)):
-        #     norm_actions_visits.append((actions_visits[i][0], P_list[i]))
-        #
-        # actions_visits = norm_actions_visits
+        # normalize P
+        P_list = [x[1] for x in actions_visits]
+        P_list = [(float(i)-min(P_list))/float(max(P_list)-min(P_list)) for i in P_list]
+        norm_actions_visits = []
+        for i in range(len(actions_visits)):
+            norm_actions_visits.append((actions_visits[i][0], P_list[i]))
+        actions_visits = norm_actions_visits
 
         actions, visits = zip(*actions_visits)
 
