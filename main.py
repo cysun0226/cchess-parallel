@@ -7,6 +7,11 @@ import argparse
 from collections import deque, defaultdict, namedtuple
 from policy_value_network_gpus import *
 from operator import itemgetter
+import json
+
+total_mcts_count = 0
+mcts_test_time = 0
+mcts_time_log = []
 
 def flipped_uci_labels(param):
     def repl(x):
@@ -457,6 +462,10 @@ class MCTS_tree(object):
 
         stop = timeit.default_timer()
         print('MCTS time: ', stop - start)
+        global mcts_time_log
+        global total_mcts_count
+        mcts_time_log.append(stop - start)
+        total_mcts_count += 1
 
     def do_simulation(self, state, current_player, restrict_round):
         node = self.root
@@ -1189,28 +1198,37 @@ class cchess_main(object):
 
     def run(self):
         #self.game_loop
+        global total_mcts_count
+        global mcts_time_log
+        global mcts_test_time
         batch_iter = 0
+        total_start = timeit.default_timer()
         try:
             while(True):
                 batch_iter += 1
                 play_data, episode_len = self.selfplay()
                 print("batch i:{}, episode_len:{}".format(batch_iter, episode_len))
-                extend_data = []
+                # extend_data = []
                 # states_data = []
-                for state, mcts_prob, winner in play_data:
-                    states_data = self.mcts.state_to_positions(state)
-                    extend_data.append((states_data, mcts_prob, winner))
-                self.data_buffer.extend(extend_data)
-                acc = 0
-                if len(self.data_buffer) > self.batch_size:
-                    acc = self.policy_update()
-                if acc > 0.4:
-                    self.log_file.close()
-                    self.policy_value_netowrk.save(self.global_step)
+                # for state, mcts_prob, winner in play_data:
+                #     states_data = self.mcts.state_to_positions(state)
+                #     extend_data.append((states_data, mcts_prob, winner))
+                # self.data_buffer.extend(extend_data)
+                # acc = 0
+                # if len(self.data_buffer) > self.batch_size:
+                #     acc = self.policy_update()
+                # if acc > 0.4:
+                #     self.log_file.close()
+                #     self.policy_value_netowrk.save(self.global_step)
+                #     exit(0)
+
+                if total_mcts_count == mcts_test_time:
+                    total_end = timeit.default_timer()
+                    logs = {"mcts_time":mcts_time_log, "total_time":[total_end-total_start]}
+                    with open('mcts_log_'+str(mcts_test_time)+time.strftime("_%m%d_%H:%M", time.localtime())+".json", 'w') as outfile:
+                        json.dump(logs, outfile)
                     exit(0)
-                # if (batch_iter) % self.game_batch == 0:
-                #     print("current self-play batch: {}".format(batch_iter))
-                #     win_ratio = self.policy_evaluate()
+
         except KeyboardInterrupt:
             self.log_file.close()
             self.policy_value_netowrk.save(self.global_step)
@@ -1451,15 +1469,17 @@ class cchess_main(object):
         return (src_x, src_y, dst_x - src_x, dst_y - src_y), win_rate
 
     def selfplay(self):
+        global mcts_test_time
+        global total_mcts_count
         self.game_borad.reload()
         # p1, p2 = self.game_borad.players
         states, mcts_probs, current_players = [], [], []
-        z = None
+        z = np.zeros(len(current_players))
         game_over = False
         winnner = ""
         start_time = time.time()
         # self.game_borad.print_borad(self.game_borad.state)
-        while(not game_over):
+        while((not game_over) and total_mcts_count<mcts_test_time):
             action, probs, win_rate = self.get_action(self.game_borad.state, self.temperature)
             state, palyer = self.mcts.try_flip(self.game_borad.state, self.game_borad.current_player, self.mcts.is_black_turn(self.game_borad.current_player))
             states.append(state)
@@ -1519,7 +1539,7 @@ if __name__ == '__main__':
     parser.add_argument('--ai_count', default=1, choices=[1, 2], type=int, help='choose ai player count')
     parser.add_argument('--ai_function', default='mcts', choices=['mcts', 'net'], type=str, help='mcts or net')
     parser.add_argument('--train_playout', default=400, type=int, help='mcts train playout')
-    parser.add_argument('--batch_size', default=512, type=int, help='train batch_size')
+    parser.add_argument('--batch_size', default=256, type=int, help='train batch_size')
     parser.add_argument('--play_playout', default=400, type=int, help='mcts play playout')
     parser.add_argument('--delay', dest='delay', action='store',
                         nargs='?', default=3, type=float, required=False,
@@ -1532,9 +1552,11 @@ if __name__ == '__main__':
     parser.add_argument('--num_gpus', default=1, type=int, help='gpu counts')
     parser.add_argument('--res_block_nums', default=7, type=int, help='res_block_nums')
     parser.add_argument('--human_color', default='b', choices=['w', 'b'], type=str, help='w or b')
+    parser.add_argument('--mcts_test_time', default=10, type=int, help='mcts_testing_time')
     args = parser.parse_args()
 
     if args.mode == 'train':
+        mcts_test_time = args.mcts_test_time
         train_main = cchess_main(args.train_playout, args.batch_size, True, args.search_threads, args.processor, args.num_gpus, args.res_block_nums, args.human_color)    # * args.num_gpus
         train_main.run()
     elif args.mode == 'play':
