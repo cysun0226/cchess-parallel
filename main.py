@@ -6,6 +6,7 @@ import time
 import argparse
 from collections import deque, defaultdict, namedtuple
 from policy_value_network_gpus import *
+from operator import itemgetter
 
 def flipped_uci_labels(param):
     def repl(x):
@@ -1296,18 +1297,6 @@ class cchess_main(object):
 
         self.mcts.main(state, self.game_borad.current_player, self.game_borad.restrict_round, self.playout_counts)
 
-        actions_visits = [(act, nod.P) for act, nod in self.mcts.root.child.items()]
-
-        # normalize P
-        P_list = [x[1] for x in actions_visits]
-        P_list = [(float(i)-min(P_list))/float(max(P_list)-min(P_list)) for i in P_list]
-        norm_actions_visits = []
-        for i in range(len(actions_visits)):
-            norm_actions_visits.append((actions_visits[i][0], P_list[i]))
-        actions_visits = norm_actions_visits
-
-        actions, visits = zip(*actions_visits)
-
         # print child information
         # child_list = [(act, nod) for act, nod in self.mcts.root.child.items()]
         # for x in child_list:
@@ -1315,24 +1304,37 @@ class cchess_main(object):
         #     print("act [%s] N: %f, P: %f, Q: %f, v: %f, U: %f, W: %f" %
         #           (x[0], x[1].N, x[1].P, x[1].Q, x[1].v, x[1].U, x[1].W))
 
+        actions_visits = [(act, nod.v[0]) for act, nod in self.mcts.root.child.items()]
+
+        sort_actions_visits = sorted(actions_visits, key=itemgetter(1), reverse=True)
+
+        # normalize v
+        v_list = [x[1] for x in actions_visits]
+        v_list = [(float(i)-min(v_list))/float(max(v_list)-min(v_list)) for i in v_list]
+        norm_actions_visits = []
+        for i in range(len(actions_visits)):
+            norm_actions_visits.append((actions_visits[i][0], v_list[i]))
+        actions_visits = norm_actions_visits
+
+        actions, visits = zip(*actions_visits)
+
         probs = softmax(1.0 / temperature * np.log(visits))    #+ 1e-10
         move_probs = []
         move_probs.append([actions, probs])
 
-        if(self.exploration):
-            act = np.random.choice(actions, p=0.75 * probs + 0.25*np.random.dirichlet(0.3*np.ones(len(probs))))
-        else:
-            act = np.random.choice(actions, p=probs)
+        # if(self.exploration):
+        #     act = np.random.choice(actions, p=0.75 * probs + 0.25*np.random.dirichlet(0.3*np.ones(len(probs))))
+        # else:
+        #     act = np.random.choice(actions, p=probs)
+
+        act = sort_actions_visits[0][0] # the first element is the node that has the largest v
+
 
         win_rate = self.mcts.Q(act) # / 2.0 + 0.5
         self.mcts.update_tree(act)
 
-        # if position.n < 30:    # self.top_steps
-        #     move = select_weighted_random(position, on_board_move_prob)
-        # else:
-        #     move = select_most_likely(position, on_board_move_prob)
-
         return act, move_probs, win_rate
+
 
     def get_action_old(self, state, temperature = 1e-3):
         for i in range(self.playout_counts):
