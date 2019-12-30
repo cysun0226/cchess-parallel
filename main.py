@@ -432,12 +432,15 @@ class MCTS_tree(object):
         ori_child = node.child.copy()
         part = int(len(node.child) / process_num)
 
+        node_child_items = [x for x in node.child.items()]
+        node_child_items = sorted(node_child_items, key=lambda tup: tup[0])
+
         # seperate children
         for i in range(process_num):
             if i != process_num - 1:
-                child_list.append(dict(list(node.child.items())[part * i:part * (i + 1)]))
+                child_list.append(dict(node_child_items[part * i:part * (i + 1)]))
             else:
-                child_list.append(dict(list(node.child.items())[part * i:len(node.child)]))
+                child_list.append(dict(node_child_items[part * i:len(node.child)]))
 
         # search by each process
         for p in range(4):  # for process (0, 1, 2, 3)
@@ -451,7 +454,6 @@ class MCTS_tree(object):
         # for c in child_list[p]:
         #    send node.child[c].v to the main process
         # TODO ...
-
 
         stop = timeit.default_timer()
         print('MCTS time: ', stop - start)
@@ -1213,34 +1215,6 @@ class cchess_main(object):
             self.log_file.close()
             self.policy_value_netowrk.save(self.global_step)
 
-    # def get_action(self, state, temperature = 1e-3):
-    #     # for i in range(self.playout_counts):
-    #     #     state_sim = copy.deepcopy(state)
-    #     #     self.mcts.do_simulation(state_sim, self.game_borad.current_player, self.game_borad.restrict_round)
-    #
-    #     futures = []
-    #     with ThreadPoolExecutor(max_workers=self.search_threads) as executor:
-    #         for _ in range(self.playout_counts):
-    #             state_sim = copy.deepcopy(state)
-    #             futures.append(executor.submit(self.mcts.do_simulation, state_sim, self.game_borad.current_player, self.game_borad.restrict_round))
-    #
-    #     vals = [f.result() for f in futures]
-    #
-    #     actions_visits = [(act, nod.N) for act, nod in self.mcts.root.child.items()]
-    #     actions, visits = zip(*actions_visits)
-    #     probs = softmax(1.0 / temperature * np.log(visits))    #+ 1e-10
-    #     move_probs = []
-    #     move_probs.append([actions, probs])
-    #
-    #     if(self.exploration):
-    #         act = np.random.choice(actions, p=0.75 * probs + 0.25*np.random.dirichlet(0.3*np.ones(len(probs))))
-    #     else:
-    #         act = np.random.choice(actions, p=probs)
-    #
-    #     self.mcts.update_tree(act)
-    #
-    #     return act, move_probs
-
     def get_hint(self, mcts_or_net, reverse, disp_mcts_msg_handler):
 
         if mcts_or_net == "mcts":
@@ -1300,7 +1274,9 @@ class cchess_main(object):
         self.mcts.main(state, self.game_borad.current_player, self.game_borad.restrict_round, self.playout_counts)
 
         # print child information
-        # child_list = [(act, nod) for act, nod in self.mcts.root.child.items()]
+        # node_child_items = [x for x in self.mcts.root.child.items()]
+        # node_child_items = sorted(node_child_items, key=lambda tup: tup[0])
+        # child_list = [(act, nod) for act, nod in node_child_items]
         # for x in child_list:
         #     # print(x)
         #     print("act [%s] N: %f, P: %f, Q: %f, v: %f, U: %f, W: %f" %

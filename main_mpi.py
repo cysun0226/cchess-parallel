@@ -444,15 +444,20 @@ class MCTS_tree(object):
 
         child_list = []
         result_list = []
+        node_child_items = node.child.items()
+        # node_child_items = sorted(node_child_items, key=lambda k: k['name'])
         ori_child = node.child.copy()
         part = int(len(node.child) / MPI_size)
+
+        node_child_items = [x for x in node.child.items()]
+        node_child_items = sorted(node_child_items, key=lambda tup: tup[0])
 
         # seperate children
         for i in range(MPI_size):
             if i != MPI_size - 1:
-                child_list.append(dict(list(node.child.items())[part * i:part * (i + 1)]))
+                child_list.append(dict(node_child_items[part * i:part * (i + 1)]))
             else:
-                child_list.append(dict(list(node.child.items())[part * i:len(node.child)]))
+                child_list.append(dict(node_child_items[part * i:len(node.child)]))
             result_list.append({})
 
         # search by each process
@@ -1336,12 +1341,14 @@ class cchess_main(object):
 
         self.mcts.main(state, self.game_borad.current_player, self.game_borad.restrict_round, self.playout_counts)
 
-        time.sleep(rank*10)
+        time.sleep(rank*5)
 
         # print child information
         print("rank ", rank)
         sys.stdout.flush()
-        child_list = [(act, nod) for act, nod in self.mcts.root.child.items()]
+        node_child_items = [x for x in self.mcts.root.child.items()]
+        node_child_items = sorted(node_child_items, key=lambda tup: tup[0])
+        child_list = [(act, nod) for act, nod in node_child_items]
         for x in child_list:
             # print(x)
             print("act [%s] N: %f, P: %f, Q: %f, v: %f, U: %f, W: %f" %
