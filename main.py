@@ -461,10 +461,10 @@ class MCTS_tree(object):
         # TODO ...
 
         stop = timeit.default_timer()
-        print('MCTS time: ', stop - start)
+        print('MCTS time: ', stop - start, ", child_num =", len(node.child))
         global mcts_time_log
         global total_mcts_count
-        mcts_time_log.append(stop - start)
+        mcts_time_log.append({"time":stop-start, "child_num":len(node.child)})
         total_mcts_count += 1
 
     def do_simulation(self, state, current_player, restrict_round):
@@ -1207,7 +1207,14 @@ class cchess_main(object):
             while(True):
                 batch_iter += 1
                 play_data, episode_len = self.selfplay()
-                print("batch i:{}, episode_len:{}".format(batch_iter, episode_len))
+                if total_mcts_count == mcts_test_time:
+                    total_end = timeit.default_timer()
+                    logs = {"mcts_time":mcts_time_log, "total_time":[total_end-total_start]}
+                    with open('mcts_log_'+str(mcts_test_time)+time.strftime("_%m%d_%H:%M", time.localtime())+".json", 'w') as outfile:
+                        json.dump(logs, outfile)
+                    exit(0)
+
+                # print("batch i:{}, episode_len:{}".format(batch_iter, episode_len))
                 # extend_data = []
                 # states_data = []
                 # for state, mcts_prob, winner in play_data:
@@ -1222,16 +1229,14 @@ class cchess_main(object):
                 #     self.policy_value_netowrk.save(self.global_step)
                 #     exit(0)
 
-                if total_mcts_count == mcts_test_time:
-                    total_end = timeit.default_timer()
-                    logs = {"mcts_time":mcts_time_log, "total_time":[total_end-total_start]}
-                    with open('mcts_log_'+str(mcts_test_time)+time.strftime("_%m%d_%H:%M", time.localtime())+".json", 'w') as outfile:
-                        json.dump(logs, outfile)
-                    exit(0)
-
         except KeyboardInterrupt:
+            total_end = timeit.default_timer()
+            logs = {"mcts_time": mcts_time_log, "total_time": [total_end - total_start]}
+            with open('mpi_mcts_log_' + str(mcts_test_time) + time.strftime("_%m%d_%H:%M", time.localtime())
+                      + ".json", 'w') as outfile:
+                json.dump(logs, outfile)
             self.log_file.close()
-            self.policy_value_netowrk.save(self.global_step)
+            # self.policy_value_netowrk.save(self.global_step)
 
     def get_hint(self, mcts_or_net, reverse, disp_mcts_msg_handler):
 
