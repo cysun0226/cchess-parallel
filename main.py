@@ -1232,7 +1232,7 @@ class cchess_main(object):
         except KeyboardInterrupt:
             total_end = timeit.default_timer()
             logs = {"mcts_time": mcts_time_log, "total_time": [total_end - total_start]}
-            with open('mpi_mcts_log_' + str(mcts_test_time) + time.strftime("_%m%d_%H:%M", time.localtime())
+            with open('mcts_log_' + str(mcts_test_time) + time.strftime("_%m%d_%H:%M", time.localtime())
                       + ".json", 'w') as outfile:
                 json.dump(logs, outfile)
             self.log_file.close()
