@@ -463,7 +463,7 @@ class MCTS_tree(object):
         stop = timeit.default_timer()
         global mcts_time_log
         global total_mcts_count
-        print("["+total_mcts_count+"]MCTS time: ", stop - start, ", child_num =", len(node.child))
+        print("["+str(total_mcts_count+1)+"] MCTS time: ", stop - start, ", child_num =", len(node.child))
         mcts_time_log.append({"time":stop-start, "child_num":len(node.child)})
         total_mcts_count += 1
 
