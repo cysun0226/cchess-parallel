@@ -447,7 +447,9 @@ class MCTS_tree(object):
                     node.child[c].back_up_value(value)
 
         # collect child from each parallel process
-        # send each node's node.P to the main process
+        # send each child's node.v (and the tree) to the main process
+        # for c in child_list[p]:
+        #    send node.child[c].v to the main process
         # TODO ...
 
 
