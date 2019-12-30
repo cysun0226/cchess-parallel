@@ -1,27 +1,20 @@
 #coding:utf-8
-from asyncio import Future
-import asyncio
-from asyncio.queues import Queue
-import uvloop
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
 import timeit
-
-
-
-import tensorflow as tf
 import numpy as np
-import os
-import sys
-import random
 import time
 import argparse
 from collections import deque, defaultdict, namedtuple
-import copy
-# from policy_value_network import *
 from policy_value_network_gpus import *
-import scipy.stats
-from threading import Lock
-from concurrent.futures import ThreadPoolExecutor
+from operator import itemgetter
+from mpi4py import MPI
+import sys
+
+
+# MPI setting
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+MPI_size = comm.Get_size()
 
 def flipped_uci_labels(param):
     def repl(x):
@@ -29,7 +22,7 @@ def flipped_uci_labels(param):
 
     return [repl(x) for x in param]
 
-# 创建所有合法走子UCI，size 2086
+# create all valid action
 def create_uci_labels():
     labels_array = []
     letters = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']
@@ -128,50 +121,10 @@ class leaf_node(object):
         self.U = c_puct * self.P * np.sqrt(self.parent.N) / ( 1 + self.N)
         return self.Q + self.U
 
-    # def select_move_by_action_score(self, noise=True):
-    #
-    #     # P = params[self.lookup['P']]
-    #     # N = params[self.lookup['N']]
-    #     # Q = params[self.lookup['W']] / (N + 1e-8)
-    #     # U = c_PUCT * P * np.sqrt(np.sum(N)) / (1 + N)
-    #
-    #     ret_a = None
-    #     ret_n = None
-    #     action_idx = {}
-    #     action_score = []
-    #     i = 0
-    #     for a, n in self.child.items():
-    #         U = c_PUCT * n.P * np.sqrt(n.parent.N) / ( 1 + n.N)
-    #         action_idx[i] = (a, n)
-    #
-    #         if noise:
-    #             action_score.append(n.Q + U * (0.75 * n.P + 0.25 * dirichlet([.03] * (go.N ** 2 + 1))) / (n.P + 1e-8))
-    #         else:
-    #             action_score.append(n.Q + U)
-    #         i += 1
-    #         # if(n.Q + n.U > max_Q_plus_U):
-    #         #     max_Q_plus_U = n.Q + n.U
-    #         #     ret_a = a
-    #         #     ret_n = n
-    #
-    #     action_t = int(np.argmax(action_score[:-1]))
-    #
-    #     return ret_a, ret_n
-    #     # return action_t
     def select_new(self, c_puct):
         return max(self.child.items(), key=lambda node: node[1].get_Q_plus_U_new(c_puct))
 
     def select(self, c_puct):
-        # max_Q_plus_U = 1e-10
-        # ret_a = None
-        # ret_n = None
-        # for a, n in self.child.items():
-        #     n.U = c_puct * n.P * np.sqrt(n.parent.N) / ( 1 + n.N)
-        #     if(n.Q + n.U > max_Q_plus_U):
-        #         max_Q_plus_U = n.Q + n.U
-        #         ret_a = a
-        #         ret_n = n
-        # return ret_a, ret_n
         return max(self.child.items(), key=lambda node: node[1].get_Q_plus_U(c_puct))
 
     #@profile
@@ -195,8 +148,6 @@ class leaf_node(object):
         self.v = value
         self.Q = self.W / self.N  # node.Q += 1.0*(value - node.Q) / node.N
         self.U = c_PUCT * self.P * np.sqrt(self.parent.N) / ( 1 + self.N)
-        # node = node.parent
-        # value = -value
 
     def backup(self, value):
         node = self
@@ -243,16 +194,11 @@ class MCTS_tree(object):
         self.c_puct = 5    #1.5
         # self.policy_network = in_policy_network
         self.forward = in_forward
-        self.node_lock = defaultdict(Lock)
 
         self.virtual_loss = 3
         self.now_expanding = set()
         self.expanded = set()
         self.cut_off_depth = 30
-        # self.QueueItem = namedtuple("QueueItem", "feature future")
-        self.sem = asyncio.Semaphore(search_threads)
-        self.queue = Queue(search_threads)
-        self.loop = asyncio.get_event_loop()
         self.running_simulation_num = 0
 
     def reload(self):
@@ -273,13 +219,9 @@ class MCTS_tree(object):
         return ret
 
     def update_tree(self, act):
-        # if(act in self.root.child):
         self.expanded.discard(self.root)
         self.root = self.root.child[act]
         self.root.parent = None
-        # else:
-        #     self.root = leaf_node(None, self.p_, in_state)
-
 
     # def do_simulation(self, state, current_player, restrict_round):
     #     node = self.root
@@ -341,43 +283,26 @@ class MCTS_tree(object):
         """Independent MCTS, stands for one simulation"""
         self.running_simulation_num += 1
         value = self.start_tree_search(node, current_player, restrict_round)
-
-        # reduce parallel search number
-        # with await self.sem:
-        #     value = await self.start_tree_search(node, current_player, restrict_round)
-            # logger.debug(f"value: {value}")
-            # logger.debug(f'Current running threads : {RUNNING_SIMULATION_NUM}')
-            # self.running_simulation_num -= 1
-
         return value
+
     def start_tree_search(self, node, current_player, restrict_round)->float:
         """Monte Carlo Tree search Select,Expand,Evauate,Backup"""
-        now_expanding = self.now_expanding
-
-        # while node in now_expanding:
-        #     await asyncio.sleep(1e-4)
 
         if not self.is_expanded(node):    # and node.is_leaf()
             """is leaf node try evaluate and expand"""
             # add leaf node to expanding list
             self.now_expanding.add(node)
 
+            # push extracted dihedral features of leaf node to the evaluation queue
             positions = self.generate_inputs(node.state, current_player)
             features = np.expand_dims(positions, 0)
-
-            # push extracted dihedral features of leaf node to the evaluation queue
-            # features = np.asarray(positions)  # asarray
-            # action_probs, value = future.result()
             action_probs, value = self.forward(features)
 
-
-            # action_probs, value = self.forward(positions)
             if self.is_black_turn(current_player):
                 action_probs = cchess_main.flip_policy(action_probs)
 
             moves = GameBoard.get_legal_moves(node.state, current_player)
-            # print("current_player : ", current_player)
-            # print(moves)
+
             node.expand(moves, action_probs)
             self.expanded.add(node)  # node.state
 
@@ -389,7 +314,7 @@ class MCTS_tree(object):
 
         else:
             """node has already expanded. Enter select phase."""
-            # select child node with maximum action scroe
+            # select child node with maximum action score
             last_state = node.state
 
             action, node = node.select_new(c_PUCT)
@@ -398,12 +323,10 @@ class MCTS_tree(object):
                 restrict_round += 1
             else:
                 restrict_round = 0
+
             last_state = node.state
 
-            # action_t = self.select_move_by_action_score(key, noise=True)
-
             # add virtual loss
-            # self.virtual_loss_do(key, action_t)
             node.N += virtual_loss
             node.W += -virtual_loss
 
@@ -420,11 +343,6 @@ class MCTS_tree(object):
                 value = 0.0
             else:
                 value = self.start_tree_search(node, current_player, restrict_round)  # next move
-            # if node is not None:
-            #     value = await self.start_tree_search(node)  # next move
-            # else:
-            #     # None position means illegal move
-            #     value = -1
 
             # self.virtual_loss_undo(key, action_t)
             node.N += -virtual_loss
@@ -437,11 +355,7 @@ class MCTS_tree(object):
 
             # must invert
             return value * -1
-            # if child_position is not None:
-            #     return value * -1
-            # else:
-            #     # illegal move doesn't mean much for the opponent
-            #     return 0
+
 
     def start_child_search(self, node, act, child, current_player, restrict_round)->float:
         last_state = node.state
@@ -499,36 +413,6 @@ class MCTS_tree(object):
         return value * -1
 
 
-    async def prediction_worker(self):
-        """For better performance, queueing prediction requests and predict together in this worker.
-        speed up about 45sec -> 15sec for example.
-        """
-        q = self.queue
-        margin = 10  # avoid finishing before other searches starting.
-        while self.running_simulation_num > 0 or margin > 0:
-            if q.empty():
-                if margin > 0:
-                    margin -= 1
-                await asyncio.sleep(1e-3)
-                continue
-            item_list = [q.get_nowait() for _ in range(q.qsize())]  # type: list[QueueItem]
-            #logger.debug(f"predicting {len(item_list)} items")
-            features = np.asarray([item.feature for item in item_list])    # asarray
-            # print("prediction_worker [features.shape] before : ", features.shape)
-            # shape = features.shape
-            # features = features.reshape((shape[0] * shape[1], shape[2], shape[3], shape[4]))
-            # print("prediction_worker [features.shape] after : ", features.shape)
-            # policy_ary, value_ary = self.run_many(features)
-            action_probs, value = self.forward(features)
-            for p, v, item in zip(action_probs, value, item_list):
-                item.future.set_result((p, v))
-
-    def push_queue(self, features):
-        future = self.loop.create_future()
-        item = QueueItem(features, future)
-        self.queue.put(item)
-        return future
-
     #@profile
     def main(self, state, current_player, restrict_round, playouts):
         node = self.root
@@ -547,62 +431,64 @@ class MCTS_tree(object):
             self.expanded.add(node)    # node.state
 
 
-
         # make sure all the nodes complete updating
-        # comm.Barrier()
-        start = timeit.default_timer()
+        global comm
+        global MPI_size
+        comm.Barrier()
+        print("rank [", rank, "] reach the barrier")
+        sys.stdout.flush()
 
-        process_num = 4
+        # if master, calculate the time
+        if rank == 0:
+            start = timeit.default_timer()
+
         child_list = []
+        result_list = []
         ori_child = node.child.copy()
-        part = int(len(node.child) / process_num)
+        part = int(len(node.child) / MPI_size)
 
         # seperate children
-        for i in range(process_num):
-            if i != process_num -1:
-                child_list.append(dict(list(node.child.items())[part*i:part*(i+1)]))
+        for i in range(MPI_size):
+            if i != MPI_size - 1:
+                child_list.append(dict(list(node.child.items())[part * i:part * (i + 1)]))
             else:
-                child_list.append(dict(list(node.child.items())[part*i:len(node.child)]))
+                child_list.append(dict(list(node.child.items())[part * i:len(node.child)]))
+            result_list.append({})
 
         # search by each process
         # rank = comm.Get_rank()
-        # node.child = child_list[rank]
-
-        """
-        for i in range(process_num):
-            node.child = child_list[i]
+        rand = ""
+        for c in child_list[rank]:
+            rand = c
             for n in range(playouts):
-                self.tree_search(node, current_player, restrict_round)
-            child_list[i] = node.child
-        """
+                value = self.start_child_search(node, c, node.child[c], current_player, restrict_round)
+                node.child[c].back_up_value(value)
 
 
-        """
-        class leaf_node(object):
-            def __init__(self, in_parent, in_prior_p, in_state):
-                self.P = in_prior_p
-                self.Q = 0
-                self.N = 0
-                self.v = 0
-                self.U = 0
-                self.W = 0
-                self.parent = in_parent
-                self.child = {}
-                self.state = in_state
-        """
-
-        # if worker
-        # send array of node.N to master
+        # collect child from each parallel process
+        # send each child's node.v (and the tree) to the main process
 
         # if master
         # collect child from each parallel process
-        for i in range(process_num-1):
-            # collect N of children
-            node.child.update(child_list[i])
+        if rank == 0:
+            for i in range(1, MPI_size):
+                child_list[i] = comm.recv(source=i,tag=i)
+        else:
+            my_child = {}
+            for c in child_list[rank]:
+                my_child[c] = child_list[rank][c]
+            comm.send(my_child, dest=0, tag=rank)
 
-        stop = timeit.default_timer()
-        print('MCTS time: ', stop - start)
+        # master update child
+        for i in range(1, MPI_size):
+            for c in child_list[i]:
+                node.child[c] = child_list[i][c]
 
+        if rank == 0:
+            stop = timeit.default_timer()
+            print('MCTS time: ', stop - start)
+
+        sys.stdout.flush()
 
     def do_simulation(self, state, current_player, restrict_round):
         node = self.root
@@ -1314,7 +1200,7 @@ class cchess_main(object):
         self.log_file.write("kl:{:.5f},lr_multiplier:{:.3f},loss:{},accuracy:{},explained_var_old:{:.3f},explained_var_new:{:.3f}".format(
                 kl, self.lr_multiplier, loss, accuracy, explained_var_old, explained_var_new) + '\n')
         self.log_file.flush()
-        # return loss, accuracy
+        return accuracy
 
     # def policy_evaluate(self, n_games=10):
     #     """
@@ -1341,20 +1227,26 @@ class cchess_main(object):
                 batch_iter += 1
                 play_data, episode_len = self.selfplay()
                 print("batch i:{}, episode_len:{}".format(batch_iter, episode_len))
+                exit(0)
                 extend_data = []
                 # states_data = []
                 for state, mcts_prob, winner in play_data:
                     states_data = self.mcts.state_to_positions(state)
                     extend_data.append((states_data, mcts_prob, winner))
                 self.data_buffer.extend(extend_data)
+                acc = 0
                 if len(self.data_buffer) > self.batch_size:
-                    self.policy_update()
+                    acc = self.policy_update()
+                if acc > 0.4:
+                    self.log_file.close()
+                    self.policy_value_netowrk.save(self.global_step)
+                    exit(0)
                 # if (batch_iter) % self.game_batch == 0:
                 #     print("current self-play batch: {}".format(batch_iter))
                 #     win_ratio = self.policy_evaluate()
         except KeyboardInterrupt:
             self.log_file.close()
-            self.policy_value_netowrk.save(self.global_step)
+            # self.policy_value_netowrk.save(self.global_step)
 
     # def get_action(self, state, temperature = 1e-3):
     #     # for i in range(self.playout_counts):
@@ -1439,60 +1331,67 @@ class cchess_main(object):
 
     #@profile
     def get_action(self, state, temperature = 1e-3):
+        global rank
+        global comm
 
         self.mcts.main(state, self.game_borad.current_player, self.game_borad.restrict_round, self.playout_counts)
-        actions_visits = [(act, nod.N) for act, nod in self.mcts.root.child.items()]
 
-        actions, visits = zip(*actions_visits)
+        time.sleep(rank*10)
 
         # print child information
-        # child_list = [(act, nod) for act, nod in self.mcts.root.child.items()]
-        # for x in child_list:
-        #     # print(x)
-        #     print("act [%s] N: %f, P: %f, Q: %f, v: %f, U: %f, W: %f" %
-        #           (x[0], x[1].N, x[1].P, x[1].Q, x[1].v, x[1].U, x[1].W))
+        print("rank ", rank)
+        sys.stdout.flush()
+        child_list = [(act, nod) for act, nod in self.mcts.root.child.items()]
+        for x in child_list:
+            # print(x)
+            print("act [%s] N: %f, P: %f, Q: %f, v: %f, U: %f, W: %f" %
+                  (x[0], x[1].N, x[1].P, x[1].Q, x[1].v, x[1].U, x[1].W))
+            sys.stdout.flush()
 
-        probs = softmax(1.0 / temperature * np.log(visits))    #+ 1e-10
+        # if master, calculate for next the action
+        act = "unset"
         move_probs = []
-        move_probs.append([actions, probs])
+        win_rate = 0
 
-        if(self.exploration):
-            act = np.random.choice(actions, p=0.75 * probs + 0.25*np.random.dirichlet(0.3*np.ones(len(probs))))
-        else:
-            act = np.random.choice(actions, p=probs)
+        if rank == 0:
+            actions_visits = [(act, nod.v[0]) for act, nod in self.mcts.root.child.items()]
 
-        # if master
-        # comm = MPI.COMM_WORLD
-        # rank = comm.Get_rank()
+            sort_actions_visits = sorted(actions_visits, key=itemgetter(1), reverse=True)
+
+            # normalize v
+            v_list = [x[1] for x in actions_visits]
+            v_list = [(float(i)-min(v_list))/float(max(v_list)-min(v_list)) for i in v_list]
+            norm_actions_visits = []
+            for i in range(len(actions_visits)):
+                norm_actions_visits.append((actions_visits[i][0], v_list[i]))
+            actions_visits = norm_actions_visits
+
+            actions, visits = zip(*actions_visits)
+
+            probs = softmax(1.0 / temperature * np.log(visits))    #+ 1e-10
+            move_probs = []
+            move_probs.append([actions, probs])
+
+            act = sort_actions_visits[0][0] # the first element is the node that has the largest v
+
         # broadcast act
-        # print("Node ", rank, " before boardcast, act = ", act)
-        # comm.Bcast(n, root=0)
-        # print("Node ", rank, " after boardcast, act = ", act)
+        print("Node ", rank, " before boardcast, act = ", act)
+        sys.stdout.flush()
+        act = comm.bcast(act, root=0)
+        move_probs = comm.bcast(move_probs, root=0)
+        win_rate = comm.bcast(win_rate, root=0)
+        print("Node ", rank, " after boardcast, act = ", act)
 
-        win_rate = self.mcts.Q(act)
+        # get next child from the master
+        self.mcts.root.child[act] = comm.bcast(self.mcts.root.child[act], root=0)
+
+        sys.stdout.flush()
+
+        win_rate = self.mcts.Q(act) # / 2.0 + 0.5
         self.mcts.update_tree(act)
 
         return act, move_probs, win_rate
 
-    def get_action_old(self, state, temperature = 1e-3):
-        for i in range(self.playout_counts):
-            state_sim = copy.deepcopy(state)
-            self.mcts.do_simulation(state_sim, self.game_borad.current_player, self.game_borad.restrict_round)
-
-        actions_visits = [(act, nod.N) for act, nod in self.mcts.root.child.items()]
-        actions, visits = zip(*actions_visits)
-        probs = softmax(1.0 / temperature * np.log(visits))    #+ 1e-10
-        move_probs = []
-        move_probs.append([actions, probs])
-
-        if(self.exploration):
-            act = np.random.choice(actions, p=0.75 * probs + 0.25*np.random.dirichlet(0.3*np.ones(len(probs))))
-        else:
-            act = np.random.choice(actions, p=probs)
-
-        self.mcts.update_tree(act)
-
-        return act, move_probs
 
     def check_end(self):
         if (self.game_borad.state.find('K') == -1 or self.game_borad.state.find('k') == -1):
@@ -1696,6 +1595,8 @@ if __name__ == '__main__':
 
     if args.mode == 'train':
         train_main = cchess_main(args.train_playout, args.batch_size, True, args.search_threads, args.processor, args.num_gpus, args.res_block_nums, args.human_color)    # * args.num_gpus
+        print("I am rank ", rank, " finish init")
+        sys.stdout.flush()
         train_main.run()
     elif args.mode == 'play':
         from ChessGame import *
