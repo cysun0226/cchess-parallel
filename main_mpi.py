@@ -20,6 +20,7 @@ mcts_time_log = []
 # MPI setting
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
+name = MPI.Get_processor_name()
 MPI_size = comm.Get_size()
 
 def flipped_uci_labels(param):
@@ -1657,7 +1658,8 @@ if __name__ == '__main__':
     if args.mode == 'train':
         mcts_test_time = args.mcts_test_time
         train_main = cchess_main(args.train_playout, args.batch_size, True, args.search_threads, args.processor, args.num_gpus, args.res_block_nums, args.human_color)    # * args.num_gpus
-        print("I am rank ", rank, " finish init")
+        msg = "Init finish. I am process {0} of {1} on {2}.\n"
+        sys.stdout.write(msg.format(rank, MPI_size, name))
         sys.stdout.flush()
         train_main.run()
     elif args.mode == 'play':
