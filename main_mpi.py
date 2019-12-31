@@ -1412,7 +1412,12 @@ class cchess_main(object):
         win_rate = 0
 
         if rank == 0:
-            actions_visits = [(act, nod.v[0]) for act, nod in self.mcts.root.child.items()]
+            actions_visits = []
+            for act, nod in self.mcts.root.child.items():
+                if type(nod.v) == int or type(nod.v) == float:
+                    actions_visits.append((act, nod.v))
+                else:
+                    actions_visits.append((act, nod.v[0]))
 
             sort_actions_visits = sorted(actions_visits, key=itemgetter(1), reverse=True)
 
