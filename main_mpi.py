@@ -14,6 +14,7 @@ import gc
 
 total_mcts_count = 0
 mcts_test_time = 0
+train_playout = 0
 mcts_time_log = []
 
 
@@ -1263,8 +1264,9 @@ class cchess_main(object):
                 play_data, episode_len = self.selfplay()
                 print("batch i:{}, episode_len:{}".format(batch_iter, episode_len))
                 if rank == 0 and total_mcts_count == mcts_test_time:
+                    global train_playout
                     total_end = timeit.default_timer()
-                    logs = {"mcts_time": mcts_time_log, "total_time": [total_end - total_start]}
+                    logs = {"train_playout": train_playout,"mcts_time": mcts_time_log, "total_time": [total_end - total_start]}
                     with open('mcts_log/mpi_mcts_log_' + str(mcts_test_time) + time.strftime("_%m%d_%H:%M", time.localtime())
                               + ".json",'w') as outfile:
                         json.dump(logs, outfile)
@@ -1657,6 +1659,7 @@ if __name__ == '__main__':
 
     if args.mode == 'train':
         mcts_test_time = args.mcts_test_time
+        train_playout = args.train_playout
         train_main = cchess_main(args.train_playout, args.batch_size, True, args.search_threads, args.processor, args.num_gpus, args.res_block_nums, args.human_color)    # * args.num_gpus
         msg = "Init finish. I am process {0} of {1} on {2}.\n"
         sys.stdout.write(msg.format(rank, MPI_size, name))
