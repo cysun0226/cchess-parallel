@@ -1256,6 +1256,8 @@ class cchess_main(object):
         global total_mcts_count
         global mcts_time_log
         global mcts_test_time
+        global rank
+        global MPI_size
         batch_iter = 0
         total_start = timeit.default_timer()
         try:
@@ -1267,7 +1269,7 @@ class cchess_main(object):
                     global train_playout
                     total_end = timeit.default_timer()
                     logs = {"train_playout": train_playout,"mcts_time": mcts_time_log, "total_time": [total_end - total_start]}
-                    with open('mcts_log/mpi_mcts_log_' + str(train_playout) + time.strftime("_%m%d_%H:%M", time.localtime())
+                    with open('mcts_log/mpi_mcts_log_node' + str(MPI_size) + "_" + str(train_playout) + time.strftime("_%m%d_%H:%M", time.localtime())
                               + ".json",'w') as outfile:
                         json.dump(logs, outfile)
 
@@ -1295,11 +1297,11 @@ class cchess_main(object):
                 #     win_ratio = self.policy_evaluate()
 
         except KeyboardInterrupt:
-            total_end = timeit.default_timer()
-            logs = {"mcts_time": mcts_time_log, "total_time": [total_end - total_start]}
-            with open('mpi_mcts_log_' + str(mcts_test_time) + time.strftime("_%m%d_%H:%M", time.localtime())
-                      + ".json", 'w') as outfile:
-                json.dump(logs, outfile)
+            # total_end = timeit.default_timer()
+            # logs = {"mcts_time": mcts_time_log, "total_time": [total_end - total_start]}
+            # with open('mcts_log/mpi_mcts_log_node' + str(MPI_size) + str(train_playout) + time.strftime("_%m%d_%H:%M", time.localtime())
+            #           + ".json", 'w') as outfile:
+            #     json.dump(logs, outfile)
             self.log_file.close()
             gc.collect()
             # self.policy_value_netowrk.save(self.global_step)
