@@ -12,6 +12,7 @@ import json
 total_mcts_count = 0
 mcts_test_time = 0
 mcts_time_log = []
+train_playout = 0
 
 def flipped_uci_labels(param):
     def repl(x):
@@ -1201,6 +1202,7 @@ class cchess_main(object):
         global total_mcts_count
         global mcts_time_log
         global mcts_test_time
+        global train_playout
         batch_iter = 0
         total_start = timeit.default_timer()
         try:
@@ -1209,7 +1211,7 @@ class cchess_main(object):
                 play_data, episode_len = self.selfplay()
                 if total_mcts_count == mcts_test_time:
                     total_end = timeit.default_timer()
-                    logs = {"mcts_time":mcts_time_log, "total_time":[total_end-total_start]}
+                    logs = {"train_playout":train_playout, "mcts_time":mcts_time_log, "total_time":[total_end-total_start]}
                     with open('mcts_log_'+str(mcts_test_time)+time.strftime("_%m%d_%H:%M", time.localtime())+".json", 'w') as outfile:
                         json.dump(logs, outfile)
                     exit(0)
@@ -1568,6 +1570,7 @@ if __name__ == '__main__':
 
     if args.mode == 'train':
         mcts_test_time = args.mcts_test_time
+        train_playout = args.train_playout
         train_main = cchess_main(args.train_playout, args.batch_size, True, args.search_threads, args.processor, args.num_gpus, args.res_block_nums, args.human_color)    # * args.num_gpus
         train_main.run()
     elif args.mode == 'play':
