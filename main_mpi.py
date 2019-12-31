@@ -9,6 +9,11 @@ from policy_value_network_gpus import *
 from operator import itemgetter
 from mpi4py import MPI
 import sys
+import json
+
+total_mcts_count = 0
+mcts_test_time = 0
+mcts_time_log = []
 
 
 # MPI setting
@@ -434,8 +439,13 @@ class MCTS_tree(object):
         # make sure all the nodes complete updating
         global comm
         global MPI_size
+        global total_mcts_count
         comm.Barrier()
-        print("rank [", rank, "] reach the barrier")
+
+        # print("rank [", rank, "] reach the barrier")
+        if (rank == 0):
+            print("round", total_mcts_count, "start")
+
         sys.stdout.flush()
 
         # if master, calculate the time
@@ -491,7 +501,11 @@ class MCTS_tree(object):
 
         if rank == 0:
             stop = timeit.default_timer()
-            print('MCTS time: ', stop - start)
+            print('MCTS time: ', stop - start, ", child_num =", len(node.child))
+            global mcts_time_log
+            mcts_time_log.append({"time": stop - start, "child_num": len(node.child)})
+
+        total_mcts_count += 1
 
         sys.stdout.flush()
 
@@ -1226,30 +1240,51 @@ class cchess_main(object):
 
     def run(self):
         #self.game_loop
+        global total_mcts_count
+        global mcts_time_log
+        global mcts_test_time
         batch_iter = 0
+        total_start = timeit.default_timer()
         try:
             while(True):
                 batch_iter += 1
                 play_data, episode_len = self.selfplay()
                 print("batch i:{}, episode_len:{}".format(batch_iter, episode_len))
-                exit(0)
-                extend_data = []
-                # states_data = []
-                for state, mcts_prob, winner in play_data:
-                    states_data = self.mcts.state_to_positions(state)
-                    extend_data.append((states_data, mcts_prob, winner))
-                self.data_buffer.extend(extend_data)
-                acc = 0
-                if len(self.data_buffer) > self.batch_size:
-                    acc = self.policy_update()
-                if acc > 0.4:
-                    self.log_file.close()
-                    self.policy_value_netowrk.save(self.global_step)
+                if rank == 0 and total_mcts_count == mcts_test_time:
+                    total_end = timeit.default_timer()
+                    logs = {"mcts_time": mcts_time_log, "total_time": [total_end - total_start]}
+                    with open('mpi_mcts_log_' + str(mcts_test_time) + time.strftime("_%m%d_%H:%M", time.localtime())
+                              + ".json",'w') as outfile:
+                        json.dump(logs, outfile)
+
+                if total_mcts_count == mcts_test_time:
+                    print("rank", rank, "exit")
                     exit(0)
+
+                # exit(0)
+                # extend_data = []
+                # # states_data = []
+                # for state, mcts_prob, winner in play_data:
+                #     states_data = self.mcts.state_to_positions(state)
+                #     extend_data.append((states_data, mcts_prob, winner))
+                # self.data_buffer.extend(extend_data)
+                # acc = 0
+                # if len(self.data_buffer) > self.batch_size:
+                #     acc = self.policy_update()
+                # if acc > 0.4:
+                #     self.log_file.close()
+                #     self.policy_value_netowrk.save(self.global_step)
+                #     exit(0)
                 # if (batch_iter) % self.game_batch == 0:
                 #     print("current self-play batch: {}".format(batch_iter))
                 #     win_ratio = self.policy_evaluate()
+
         except KeyboardInterrupt:
+            total_end = timeit.default_timer()
+            logs = {"mcts_time": mcts_time_log, "total_time": [total_end - total_start]}
+            with open('mpi_mcts_log_' + str(mcts_test_time) + time.strftime("_%m%d_%H:%M", time.localtime())
+                      + ".json", 'w') as outfile:
+                json.dump(logs, outfile)
             self.log_file.close()
             # self.policy_value_netowrk.save(self.global_step)
 
@@ -1341,19 +1376,17 @@ class cchess_main(object):
 
         self.mcts.main(state, self.game_borad.current_player, self.game_borad.restrict_round, self.playout_counts)
 
-        time.sleep(rank*5)
-
         # print child information
-        print("rank ", rank)
-        sys.stdout.flush()
-        node_child_items = [x for x in self.mcts.root.child.items()]
-        node_child_items = sorted(node_child_items, key=lambda tup: tup[0])
-        child_list = [(act, nod) for act, nod in node_child_items]
-        for x in child_list:
-            # print(x)
-            print("act [%s] N: %f, P: %f, Q: %f, v: %f, U: %f, W: %f" %
-                  (x[0], x[1].N, x[1].P, x[1].Q, x[1].v, x[1].U, x[1].W))
-            sys.stdout.flush()
+        # print("rank ", rank)
+        # sys.stdout.flush()
+        # node_child_items = [x for x in self.mcts.root.child.items()]
+        # node_child_items = sorted(node_child_items, key=lambda tup: tup[0])
+        # child_list = [(act, nod) for act, nod in node_child_items]
+        # for x in child_list:
+        #     # print(x)
+        #     print("act [%s] N: %f, P: %f, Q: %f, v: %f, U: %f, W: %f" %
+        #           (x[0], x[1].N, x[1].P, x[1].Q, x[1].v, x[1].U, x[1].W))
+        #     sys.stdout.flush()
 
         # if master, calculate for next the action
         act = "unset"
@@ -1382,12 +1415,15 @@ class cchess_main(object):
             act = sort_actions_visits[0][0] # the first element is the node that has the largest v
 
         # broadcast act
-        print("Node ", rank, " before boardcast, act = ", act)
+
+        # print("Node ", rank, " before boardcast, act = ", act)
+
         sys.stdout.flush()
         act = comm.bcast(act, root=0)
         move_probs = comm.bcast(move_probs, root=0)
         win_rate = comm.bcast(win_rate, root=0)
-        print("Node ", rank, " after boardcast, act = ", act)
+
+        # print("Node ", rank, " after boardcast, act = ", act)
 
         # get next child from the master
         self.mcts.root.child[act] = comm.bcast(self.mcts.root.child[act], root=0)
@@ -1517,15 +1553,17 @@ class cchess_main(object):
         return (src_x, src_y, dst_x - src_x, dst_y - src_y), win_rate
 
     def selfplay(self):
+        global mcts_test_time
+        global total_mcts_count
         self.game_borad.reload()
         # p1, p2 = self.game_borad.players
         states, mcts_probs, current_players = [], [], []
-        z = None
+        z = np.zeros(len(current_players))
         game_over = False
         winnner = ""
         start_time = time.time()
         # self.game_borad.print_borad(self.game_borad.state)
-        while(not game_over):
+        while((not game_over) and total_mcts_count<mcts_test_time):
             action, probs, win_rate = self.get_action(self.game_borad.state, self.temperature)
             state, palyer = self.mcts.try_flip(self.game_borad.state, self.game_borad.current_player, self.mcts.is_black_turn(self.game_borad.current_player))
             states.append(state)
@@ -1576,7 +1614,9 @@ class cchess_main(object):
             if(game_over):
                 # self.mcts.root = leaf_node(None, self.mcts.p_, "RNBAKABNR/9/1C5C1/P1P1P1P1P/9/9/p1p1p1p1p/1c5c1/9/rnbakabnr")#"rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR"
                 self.mcts.reload()
-        print("Using time {} s".format(time.time() - start_time))
+        global rank
+        if rank == 0:
+            print("Using time {} s".format(time.time() - start_time))
         return zip(states, mcts_probs, z), len(z)
 
 if __name__ == '__main__':
@@ -1585,7 +1625,7 @@ if __name__ == '__main__':
     parser.add_argument('--ai_count', default=1, choices=[1, 2], type=int, help='choose ai player count')
     parser.add_argument('--ai_function', default='mcts', choices=['mcts', 'net'], type=str, help='mcts or net')
     parser.add_argument('--train_playout', default=400, type=int, help='mcts train playout')
-    parser.add_argument('--batch_size', default=512, type=int, help='train batch_size')
+    parser.add_argument('--batch_size', default=256, type=int, help='train batch_size')
     parser.add_argument('--play_playout', default=400, type=int, help='mcts play playout')
     parser.add_argument('--delay', dest='delay', action='store',
                         nargs='?', default=3, type=float, required=False,
@@ -1598,9 +1638,11 @@ if __name__ == '__main__':
     parser.add_argument('--num_gpus', default=1, type=int, help='gpu counts')
     parser.add_argument('--res_block_nums', default=7, type=int, help='res_block_nums')
     parser.add_argument('--human_color', default='b', choices=['w', 'b'], type=str, help='w or b')
+    parser.add_argument('--mcts_test_time', default=10, type=int, help='mcts_testing_time')
     args = parser.parse_args()
 
     if args.mode == 'train':
+        mcts_test_time = args.mcts_test_time
         train_main = cchess_main(args.train_playout, args.batch_size, True, args.search_threads, args.processor, args.num_gpus, args.res_block_nums, args.human_color)    # * args.num_gpus
         print("I am rank ", rank, " finish init")
         sys.stdout.flush()
