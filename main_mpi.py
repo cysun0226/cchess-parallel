@@ -10,6 +10,7 @@ from operator import itemgetter
 from mpi4py import MPI
 import sys
 import json
+import gc
 
 total_mcts_count = 0
 mcts_test_time = 0
@@ -444,7 +445,7 @@ class MCTS_tree(object):
 
         # print("rank [", rank, "] reach the barrier")
         if (rank == 0):
-            print("round", total_mcts_count, "start")
+            print("\nround", total_mcts_count, "start\n")
 
         sys.stdout.flush()
 
@@ -480,6 +481,13 @@ class MCTS_tree(object):
                 node.child[c].back_up_value(value)
 
 
+        compute_time = 0
+        if rank == 0:
+            stop = timeit.default_timer()
+            compute_time = stop - start
+            print('Compute time: ', stop - start, "s")
+            trans_start = timeit.default_timer()
+
         # collect child from each parallel process
         # send each child's node.v (and the tree) to the main process
 
@@ -501,9 +509,12 @@ class MCTS_tree(object):
 
         if rank == 0:
             stop = timeit.default_timer()
-            print('MCTS time: ', stop - start, ", child_num =", len(node.child))
+            trans_time = stop - trans_start
+            print('Transmit time: ', stop - trans_start, "s")
+            print('MCTS time: ', stop - start, "s, child_num =", len(node.child))
             global mcts_time_log
-            mcts_time_log.append({"time": stop - start, "child_num": len(node.child)})
+            time_data = {"mcts": stop-start, "compute":compute_time, "trans": trans_time}
+            mcts_time_log.append({"time": time_data, "child_num": len(node.child)})
 
         total_mcts_count += 1
 
@@ -1253,12 +1264,13 @@ class cchess_main(object):
                 if rank == 0 and total_mcts_count == mcts_test_time:
                     total_end = timeit.default_timer()
                     logs = {"mcts_time": mcts_time_log, "total_time": [total_end - total_start]}
-                    with open('mpi_mcts_log_' + str(mcts_test_time) + time.strftime("_%m%d_%H:%M", time.localtime())
+                    with open('mcts_log/mpi_mcts_log_' + str(mcts_test_time) + time.strftime("_%m%d_%H:%M", time.localtime())
                               + ".json",'w') as outfile:
                         json.dump(logs, outfile)
 
                 if total_mcts_count == mcts_test_time:
                     print("rank", rank, "exit")
+                    gc.collect()
                     exit(0)
 
                 # exit(0)
@@ -1286,6 +1298,7 @@ class cchess_main(object):
                       + ".json", 'w') as outfile:
                 json.dump(logs, outfile)
             self.log_file.close()
+            gc.collect()
             # self.policy_value_netowrk.save(self.global_step)
 
     # def get_action(self, state, temperature = 1e-3):
