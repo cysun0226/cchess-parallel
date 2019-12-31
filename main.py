@@ -1212,7 +1212,7 @@ class cchess_main(object):
                 if total_mcts_count == mcts_test_time:
                     total_end = timeit.default_timer()
                     logs = {"train_playout":train_playout, "mcts_time":mcts_time_log, "total_time":[total_end-total_start]}
-                    with open('mcts_log_'+str(mcts_test_time)+time.strftime("_%m%d_%H:%M", time.localtime())+".json", 'w') as outfile:
+                    with open('mcts_log_'+str(train_playout)+time.strftime("_%m%d_%H:%M", time.localtime())+".json", 'w') as outfile:
                         json.dump(logs, outfile)
                     exit(0)
 
