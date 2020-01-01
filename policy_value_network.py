@@ -3,6 +3,8 @@ import tensorflow as tf
 import numpy as np
 
 import os
+import logging
+logging.getLogger("tensorflow").setLevel(logging.WARNING)
 
 
 class policy_value_network(object):
