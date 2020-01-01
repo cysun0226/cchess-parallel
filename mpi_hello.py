@@ -10,4 +10,6 @@ if __name__ == "__main__":
   rank = MPI.COMM_WORLD.Get_rank()
   name = MPI.Get_processor_name()
 
+  comm = MPI.COMM_WORLD
+  comm.Barrier()
   print_hello(rank, size, name)
