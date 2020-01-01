@@ -1671,6 +1671,7 @@ if __name__ == '__main__':
         msg = "Init finish. I am process {0} of {1} on {2}.\n"
         sys.stdout.write(msg.format(rank, MPI_size, name))
         sys.stdout.flush()
+        comm.Barrier()
         train_main.run()
     elif args.mode == 'play':
         from ChessGame import *
