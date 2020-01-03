@@ -455,7 +455,7 @@ class MCTS_tree(object):
         if rank == 0:
             start = timeit.default_timer()
 
-        child_list = []
+        child_list = [[], [], [], []]
         result_list = []
         node_child_items = node.child.items()
         # node_child_items = sorted(node_child_items, key=lambda k: k['name'])
@@ -472,6 +472,11 @@ class MCTS_tree(object):
             else:
                 child_list.append(dict(node_child_items[part * i:len(node.child)]))
             result_list.append({})
+
+        if rank != MPI_size -1:
+            child_list[rank] = dict(node_child_items[part*i:part*(i+1)]))
+        else:
+            child_list[rank] = dict(node_child_items[part*i:len(node.child)])
 
         # search by each process
         # rank = comm.Get_rank()
