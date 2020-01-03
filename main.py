@@ -442,18 +442,18 @@ class MCTS_tree(object):
         node_child_items = sorted(node_child_items, key=lambda tup: tup[0])
 
         # seperate children
-        for i in range(process_num):
-            if i != process_num - 1:
-                child_list.append(dict(node_child_items[part * i:part * (i + 1)]))
-            else:
-                child_list.append(dict(node_child_items[part * i:len(node.child)]))
+        # for i in range(process_num):
+        #    if i != process_num - 1:
+        #        child_list.append(dict(node_child_items[part * i:part * (i + 1)]))
+        #    else:
+        #        child_list.append(dict(node_child_items[part * i:len(node.child)]))
 
         # search by each process
-        for p in range(4):  # for process (0, 1, 2, 3)
-            for c in child_list[p]:
-                for n in range(playouts):
-                    value = self.start_child_search(node, c, node.child[c], current_player, restrict_round)
-                    node.child[c].back_up_value(value)
+        # for p in range(4):  # for process (0, 1, 2, 3)
+        for c in node.child:
+            for n in range(playouts):
+                value = self.start_child_search(node, c, node.child[c], current_player, restrict_round)
+                node.child[c].back_up_value(value)
 
         # collect child from each parallel process
         # send each child's node.v (and the tree) to the main process
