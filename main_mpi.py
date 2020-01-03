@@ -467,10 +467,10 @@ class MCTS_tree(object):
 
         # seperate children
         for i in range(MPI_size):
-            if i != MPI_size - 1:
-                child_list.append(dict(node_child_items[part * i:part * (i + 1)]))
-            else:
-                child_list.append(dict(node_child_items[part * i:len(node.child)]))
+            # if i != MPI_size - 1:
+            #     child_list.append(dict(node_child_items[part * i:part * (i + 1)]))
+            # else:
+            #     child_list.append(dict(node_child_items[part * i:len(node.child)]))
             result_list.append({})
 
         if rank != MPI_size -1:
