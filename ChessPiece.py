@@ -30,7 +30,6 @@ class ChessPiece:
         if (nx, ny) in board.pieces:
             board.remove(nx, ny)
         board.remove(self.x, self.y)
-        #print 'Move a chessman from (%d,%d) to (%d,%d)'%(self.x, self.y, self.x+dx, self.y+dy)
         self.x += dx
         self.y += dy
         board.pieces[self.x, self.y] = self

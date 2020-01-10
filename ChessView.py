@@ -25,11 +25,7 @@ class ChessView:
             for (x, y) in board.selected_piece.get_move_locs(board):
                 self.move_images.append(tkinter.PhotoImage(file="images/OOS.gif"))
                 self.can.create_image(board_coord(x), board_coord(y), image=self.move_images[-1])
-                # self.can.create_text(board_coord(x), board_coord(y),text="Hello")
 
-        # label = tkinter.Label(self.root, text='Hello　world!')
-        # label.place(x=30,y=30)
-        # label.pack(fill='x', expand=1)
 
     def disp_hint_on_board(self, action, percentage):
         board = self.board
@@ -73,9 +69,6 @@ class ChessView:
 
     def print_all_hint(self, sorted_move_probs):
 
-        # for i in range(len(sorted_move_probs)):
-        #     self.lb.insert(END, str(i * 100))
-
         self.lb.delete(0, "end")
         for item in sorted_move_probs:
             # print(item[0], item[1])
@@ -87,10 +80,6 @@ class ChessView:
         self.root.title(msg)
 
     def printList(self, event):
-        # print(self.lb.curselection())
-        # print(self.lb.get(self.lb.curselection()))
-        # for i in range(self.lb.size()):
-        #     print(i, self.lb.selection_includes(i))
         w = event.widget
         index = int(w.curselection()[0])
         value = w.get(index)
@@ -116,8 +105,6 @@ class ChessView:
         self.last_text_y = 0
         self.print_text_flag = False
 
-    # def start(self):
-    #     tkinter.mainloop()
     def start(self):
         if self.control.game_mode == 2:
             self.root.update()
@@ -132,9 +119,7 @@ class ChessView:
                     return
         else:
             tkinter.mainloop()
-            # self.root.mainloop()
 
-    # below added by Fei Li
 
     def quit(self):
         self.root.quit()
