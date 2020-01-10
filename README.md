@@ -5,7 +5,7 @@ The serial version source code is modified from [cchess-zero](https://github.com
 
 Based on the serial version, we implement the root parallelization of MCTS by three methods: multi-process module, multi-process with pool, and mpi4py.
 
-## Porject Files Overview
+# Porject Files Overview
 ```
 .
 ├── ChessBoard.py
@@ -23,7 +23,7 @@ Based on the serial version, we implement the root parallelization of MCTS by th
 └── policy_value_network.py  // evaluation function of the new expanded node
 ```
 
-## Execution
+# Execution
 
 All the main programs (main.py, main_mpi.py, main_multiproc.py, main_pool.py) can be executed in the following command format. Users can adjust the  ```play_playout```, which specifies the number of game tree searching for each step.
 
@@ -43,11 +43,11 @@ This mode will not show GUI, and it will execute MCTS for the given times. The n
 python3 main.py --train_playout 5 --mcts_test_time 5
 ```
 
-## Source code overview
+# Source code overview
 
 In this section, to quickly illustrate the key points of our implementation, we extract the segments related to the parallelization from our source code.
 
-### mpi4py (main_mpi.py)
+## mpi4py (main_mpi.py)
 Most of the part of the parallelization is line 468~528, which shows in the following code section. The part of the master broadcasting the next action is in the function *getaction*, and the exact location starts from the line 1445.
 ```python
 # make sure all the nodes complete updating
@@ -110,7 +110,7 @@ for i in range(1, MPI_size):
         node.child[c] = child_list[i][c]
 ```
 
-### multiprocess (main_multiproc.py)
+## multiprocess (main_multiproc.py)
 Adopt from line 461-511.
 ```python
 # seperate children
@@ -154,7 +154,7 @@ process3.join()
 
 ```
 
-### multiprocess with pool (main_pool.py)
+## multiprocess with pool (main_pool.py)
 Adopt from line 420-428, 463-509.
 ```python
 def search_by_each_child(self,child_list, playouts, node, current_player, restrict_round):
